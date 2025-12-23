@@ -4,44 +4,101 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.6/controls.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.6/shaka-player.ui.js"></script>
     <style>
-        body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .video-container { width: 80%; }
+        body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+        .video-container { width: 80%; position: relative; }
+        
+        /* Style untuk Watermark */
+        #wm-shield {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* Klik tembus ke video */
+            z-index: 10;
+            overflow: hidden;
+        }
+        .watermark-text {
+            position: absolute;
+            color: rgba(255, 255, 255, 0.3);
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            white-space: nowrap;
+            user-select: none;
+            transition: all 0.5s ease-in-out;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
     </style>
 </head>
 <body>
-    <div class="video-container" data-shaka-player-container>
+    <div class="video-container" data-shaka-player-container id="main-container">
         <video id="video" data-shaka-player style="width:100%;height:100%"></video>
+        <div id="wm-shield"></div>
     </div>
 
     <script>
+        const USER_IDENTITY = "User: Admin "; // Data ini harusnya dari Backend
+
         async function initApp() {
             const video = document.getElementById('video');
+            const shield = document.getElementById('wm-shield');
             const ui = video['ui'];
             const controls = ui.getControls();
             const player = controls.getPlayer();
 
-            // Jalankan WebSocket untuk ambil kunci
+            // 1. Fungsi Membuat Watermark Bergerak
+            function createWatermark() {
+                const el = document.createElement('div');
+                el.id = 'dynamic-wm';
+                el.className = 'watermark-text';
+                el.innerText = USER_IDENTITY;
+                shield.appendChild(el);
+
+                setInterval(() => {
+                    const maxX = shield.offsetWidth - el.offsetWidth;
+                    const maxY = shield.offsetHeight - el.offsetHeight;
+                    el.style.left = Math.random() * maxX + 'px';
+                    el.style.top = Math.random() * maxY + 'px';
+                    
+                    // Acak sedikit ukuran dan rotasi agar susah difilter AI
+                    el.style.transform = `rotate(${Math.random() * 20 - 10}deg) scale(${0.8 + Math.random() * 0.4})`;
+                }, 4000);
+            }
+
+            // 2. Integrity Guard: Deteksi jika Watermark dihapus/diubah
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    const wm = document.getElementById('dynamic-wm');
+                    // Jika element dihapus atau disembunyikan
+                    if (!wm || wm.style.display === 'none' || wm.style.visibility === 'hidden' || parseFloat(wm.style.opacity) < 0.1) {
+                        player.unload(); // Hentikan video
+                        alert("Peringatan: Manipulasi terdeteksi. Akses dihentikan.");
+                        window.location.reload();
+                    }
+                });
+            });
+
+            observer.observe(shield, { attributes: true, childList: true, subtree: true });
+
+            // 3. Ambil Kunci dari WebSocket
             const ws = new WebSocket('ws://localhost:8080/ws-get-cenc');
             ws.onopen = () => ws.send('get-cenc-keys');
             
             ws.onmessage = async (event) => {
                 const data = JSON.parse(event.data);
-                
                 player.configure({
-                    drm: {
-                        clearKeys: { [data.kid]: data.key }
-                    }
+                    drm: { clearKeys: { [data.kid]: data.key } }
                 });
 
                 try {
                     await player.load('/content/manifest.mpd');
-                    console.log('Video Adaptif Berhasil!');
+                    createWatermark(); // Jalankan watermark setelah video load
                 } catch (e) {
                     console.error('Gagal load DASH', e);
                 }
             };
         }
 
+        // Anti Klik Kanan
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        
         document.addEventListener('shaka-ui-loaded', initApp);
     </script>
 </body>
