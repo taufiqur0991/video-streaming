@@ -1,5 +1,5 @@
 ## Tool needed
-1.  packager-win-x64.exe from [shaka-packager](https://github.com/shaka-project/shaka-packager/releases)
+1. packager-win-x64.exe from [shaka-packager](https://github.com/shaka-project/shaka-packager/releases)
 2. ffmpeg from [ffmpeg.org](https://www.ffmpeg.org/download.html)
 
 3. read instruct
