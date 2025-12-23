@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Go DASH Player</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dashjs/4.7.1/dash.all.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { width: 100%; max-width: 850px; }
+        video { width: 100%; border-radius: 8px; background: black; }
+        .controls { margin-top: 15px; display: flex; gap: 10px; align-items: center; background: #222; padding: 15px; border-radius: 8px; }
+        select { padding: 8px; border-radius: 4px; background: #333; color: white; border: 1px solid #444; cursor: pointer; }
+        .stats { margin-top: 10px; font-size: 14px; color: #aaa; }
+        .badge { background: #007bff; padding: 2px 8px; border-radius: 10px; color: white; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>DASH Adaptive Player</h2>
+        
+        <video id="videoPlayer" controls></video>
+
+        <div class="controls">
+            <label for="bitratePicker">Kualitas Video:</label>
+            <select id="bitratePicker">
+                <option value="-1">Auto (Adaptif)</option>
+            </select>
+            <div class="stats">
+                Bitrate aktif: <span id="currentBitrate" class="badge">Menghitung...</span>
+            </div>
+        </div>
+        
+        <p style="font-size: 13px; color: #666;">
+            * Jika pilih <b>Auto</b>, player akan turun ke 480p otomatis saat koneksi lambat (Coba simulasi 'Throttling' di DevTools Chrome).
+        </p>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const url = "/content/stream.mpd";
+            const videoElement = document.querySelector("#videoPlayer");
+            const bitratePicker = document.querySelector("#bitratePicker");
+            const bitrateDisplay = document.querySelector("#currentBitrate");
+
+            const player = dashjs.MediaPlayer().create();
+            player.initialize(videoElement, url, true);
+
+            // 1. Isi Dropdown Resolusi setelah Manifest dimuat
+            player.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, function () {
+                const bitrates = player.getBitrateInfoListFor("video");
+                
+                bitrates.forEach((info, index) => {
+                    const option = document.createElement("option");
+                    option.value = index;
+                    option.text = info.height + "p (" + Math.round(info.bitrate / 1000) + " kbps)";
+                    bitratePicker.appendChild(option);
+                });
+            });
+
+            // 2. Logika Pindah Resolusi Manual
+            bitratePicker.addEventListener("change", function () {
+                const selectedValue = parseInt(bitratePicker.value);
+                
+                if (selectedValue === -1) {
+                    // Balik ke mode Adaptif otomatis
+                    player.updateSettings({
+                        'streaming': {
+                            'abr': { 'autoSwitchBitrate': { 'video': true } }
+                        }
+                    });
+                } else {
+                    // Paksa ke resolusi tertentu
+                    player.updateSettings({
+                        'streaming': {
+                            'abr': { 'autoSwitchBitrate': { 'video': false } }
+                        }
+                    });
+                    player.setQualityFor("video", selectedValue);
+                }
+            });
+
+            // 3. Update Tampilan Bitrate yang sedang berjalan
+            setInterval(function () {
+                const activeIndex = player.getQualityFor("video");
+                const bitrates = player.getBitrateInfoListFor("video");
+                if (bitrates[activeIndex]) {
+                    const height = bitrates[activeIndex].height;
+                    const kbps = Math.round(bitrates[activeIndex].bitrate / 1000);
+                    bitrateDisplay.innerText = height + "p @ " + kbps + " kbps";
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

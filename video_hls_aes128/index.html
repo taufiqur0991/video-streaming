@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Secure Adaptive Stream</title>
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+    <style>
+        body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .video-container { width: 80%; max-width: 900px; }
+    </style>
+</head>
+<body>
+
+    <div class="video-container">
+        <video id="my-secure-player" class="video-js vjs-16-9 vjs-big-play-centered" controls></video>
+    </div>
+
+    <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+
+    <script src="https://unpkg.com/videojs-contrib-quality-levels@4.1.0/dist/videojs-contrib-quality-levels.min.js"></script>
+    <script src="https://unpkg.com/videojs-hls-quality-selector@2.0.0/dist/videojs-hls-quality-selector.min.js"></script>
+
+    <script>
+        let binaryKey = null;
+
+        // Inisialisasi player
+        const player = videojs('my-secure-player');
+
+        // Aktifkan pemilih kualitas
+        player.hlsQualitySelector({
+            displayCurrentQuality: true,
+        });
+
+        // Helper: Convert Binary Key ke Data URI
+        function getKmsUri(buf) {
+            const bytes = new Uint8Array(buf);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            return `data:application/octet-stream;base64,${base64}`;
+        }
+
+        // Hook Intersepsi Request
+        videojs.Vhs.xhr.beforeRequest = function(options) {
+            if (options.uri.includes('video/key')) {
+                if (binaryKey) {
+                    console.log("Intersepsi: Menyuapkan kunci dari WebSocket");
+                    options.uri = getKmsUri(binaryKey);
+                } else {
+                    console.error("Kunci belum siap!");
+                }
+            }
+            return options;
+        };
+
+        // Koneksi WebSocket
+        const socket = new WebSocket('ws://localhost:8080/ws-key');
+        socket.binaryType = 'arraybuffer';
+
+        socket.onopen = () => {
+            console.log("WebSocket Terhubung");
+            socket.send('get-key');
+        };
+
+        socket.onmessage = (event) => {
+            binaryKey = event.data;
+            console.log("Key berhasil diterima via WS");
+            
+            // Set source video setelah kunci diterima
+            player.src({
+                type: 'application/x-mpegURL',
+                src: 'http://localhost:8080/stream/master.m3u8'
+            });
+        };
+
+        socket.onerror = (err) => console.error("WS Error:", err);
+    </script>
+</body>
+</html>
