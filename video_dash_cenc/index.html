@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.6/controls.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.6/shaka-player.ui.js"></script>
+    <style>
+        body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .video-container { width: 80%; }
+    </style>
+</head>
+<body>
+    <div class="video-container" data-shaka-player-container>
+        <video id="video" data-shaka-player style="width:100%;height:100%"></video>
+    </div>
+
+    <script>
+        async function initApp() {
+            const video = document.getElementById('video');
+            const ui = video['ui'];
+            const controls = ui.getControls();
+            const player = controls.getPlayer();
+
+            // Jalankan WebSocket untuk ambil kunci
+            const ws = new WebSocket('ws://localhost:8080/ws-get-cenc');
+            ws.onopen = () => ws.send('get-cenc-keys');
+            
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                
+                player.configure({
+                    drm: {
+                        clearKeys: { [data.kid]: data.key }
+                    }
+                });
+
+                try {
+                    await player.load('/content/manifest.mpd');
+                    console.log('Video Adaptif Berhasil!');
+                } catch (e) {
+                    console.error('Gagal load DASH', e);
+                }
+            };
+        }
+
+        document.addEventListener('shaka-ui-loaded', initApp);
+    </script>
+</body>
+</html>
